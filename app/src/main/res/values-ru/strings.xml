@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Калькулятор</string>
+    <string name="history">История</string>
+    <string name="clear">Очистить</string>
+    <string name="clear_history">Очистить историю?</string>
+    <string name="back">Назад</string>
+    <string name="delete">Удалить</string>
+    <string name="scientific_keys">Научные функции</string>
+    <string name="error">Ошибка</string>
+</resources>
