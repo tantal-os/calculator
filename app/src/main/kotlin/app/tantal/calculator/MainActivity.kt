@@ -11,15 +11,14 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -39,7 +38,6 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -59,6 +57,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -71,9 +70,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -91,7 +95,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -99,6 +102,7 @@ import androidx.lifecycle.ViewModelProvider
 import app.tantal.theme.TantalTheme
 import app.tantal.theme.mathFont
 import java.text.DecimalFormatSymbols
+import kotlin.math.ceil
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -136,7 +140,6 @@ private fun Calculator(state: CalculatorState) {
         }
     }
     val historyVisible = historyOpen || reveal.fraction > 0f
-    val tape = state.entries.takeLast(TAPE_LINES + 1)
     val storageError = state.storageError
     LaunchedEffect(storageError) {
         if (storageError != null) Toast.makeText(context, storageError.message, Toast.LENGTH_SHORT).show()
@@ -167,10 +170,7 @@ private fun Calculator(state: CalculatorState) {
                             )
                         }
                         Display(
-                            tape,
-                            state.committed,
-                            state.expression,
-                            state.preview,
+                            state,
                             small = scientific,
                             modifier = Modifier.draggable(
                                 rememberDraggableState { reveal.drag(it) },
@@ -216,19 +216,15 @@ private fun Calculator(state: CalculatorState) {
 
 @Composable
 private fun ColumnScope.Display(
-    tape: List<Entry>,
-    committed: Calculation.Answer?,
-    expression: String,
-    preview: Calculation?,
+    state: CalculatorState,
     small: Boolean,
     modifier: Modifier,
 ) {
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     val motion = MaterialTheme.motionScheme
-    // Read inside the text lambdas only, so a size animation recomposes one text and not the display.
     val maxSize = animateFloatAsState(if (small) 40f else 60f, motion.slowEffectsSpec())
     val resultSize = animateFloatAsState(if (small) 28f else 36f, motion.slowEffectsSpec())
-    val tapeHeight = with(LocalDensity.current) { (32.sp * TAPE_LINES).toDp() }
+    val density = LocalDensity.current
     Column(
         Modifier
             .weight(1f)
@@ -237,57 +233,16 @@ private fun ColumnScope.Display(
             .padding(start = 24.dp, end = 24.dp, bottom = if (small) 10.dp else 20.dp),
         horizontalAlignment = Alignment.End,
     ) {
-        // The weight makes the tape give way when the expression and the keys need the room.
         Box(Modifier.weight(1f).padding(bottom = 12.dp), contentAlignment = Alignment.BottomEnd) {
-            // One entry more than the visible lines sits above the clip, so the oldest line
-            // slides out while the new one unfolds instead of vanishing.
-            Column(
-                Modifier
-                    .heightIn(max = tapeHeight)
-                    .clipToBounds()
-                    .wrapContentHeight(Alignment.Bottom, unbounded = true),
-                horizontalAlignment = Alignment.End,
-            ) {
-                for (entry in tape) {
-                    key(entry.time) {
-                        AnimatedVisibility(
-                            remember { MutableTransitionState(false).apply { targetState = true } },
-                            enter = expandVertically(motion.slowEffectsSpec()) + fadeIn(motion.slowEffectsSpec()),
-                        ) {
-                            Text(
-                                remember(entry) {
-                                    buildAnnotatedString {
-                                        val separator = if (entry.answer.solution == null) " = " else " → "
-                                        withStyle(SpanStyle(color = dim)) { append(display(entry.expression) + separator) }
-                                        append(display(entry.answer.text))
-                                    }
-                                },
-                                solutionSemantics(entry.answer, "${display(entry.expression)}. "),
-                                fontFamily = mathFont,
-                                fontSize = 18.sp,
-                                lineHeight = 32.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.StartEllipsis,
-                            )
-                        }
-                    }
-                }
-            }
+            RecentExpressions(state)
         }
-        AnimatedContent(
-            (committed?.text ?: expression) to committed,
-            Modifier.fillMaxWidth(),
-            transitionSpec = {
-                val slide = motion.slowEffectsSpec<IntOffset>()
-                val fade = motion.slowEffectsSpec<Float>()
-                slideInVertically(slide) { it } + fadeIn(fade) togetherWith slideOutVertically(slide) { -it } + fadeOut(
-                    fade
-                )
-            },
-            contentKey = { it.second != null },
-        ) { (text, answer) ->
+        Box(
+            Modifier.fillMaxWidth().height(with(density) { (maxSize.value.sp * 1.15).toDp() }),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            val answer = state.committed
             Text(
-                display(text),
+                display(answer?.text ?: state.expression),
                 Modifier.fillMaxWidth().then(solutionSemantics(answer)),
                 fontFamily = mathFont,
                 autoSize = TextAutoSize.StepBased(24.sp, maxSize.value.sp, 0.25.sp),
@@ -297,28 +252,105 @@ private fun ColumnScope.Display(
                 overflow = TextOverflow.StartEllipsis,
             )
         }
-        AnimatedContent(
-            preview,
-            transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.defaultEffectsSpec()) using null },
-            contentKey = { it == null },
-        ) { result ->
-            val math = result as? Calculation.Answer
-            val text = when (result) {
-                is Calculation.Answer -> display(result.text)
-                is Calculation.Error -> stringResource(result.failure.message)
-                null -> ""
+        Box(
+            Modifier.fillMaxWidth().height(with(density) { (resultSize.value.sp * 1.25).toDp() }),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            if (state.committed == null) {
+                AnimatedContent(
+                    state.preview,
+                    transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.defaultEffectsSpec()) using null },
+                    contentKey = { it == null },
+                ) { result ->
+                    val math = result as? Calculation.Answer
+                    val text = when (result) {
+                        is Calculation.Answer -> display(result.text)
+                        is Calculation.Error -> stringResource(result.failure.message)
+                        null -> ""
+                    }
+                    Text(
+                        text,
+                        solutionSemantics(math),
+                        color = dim,
+                        fontFamily = if (math != null) mathFont else null,
+                        autoSize = TextAutoSize.StepBased(16.sp, resultSize.value.sp, 0.25.sp),
+                        textAlign = TextAlign.End,
+                        lineHeight = 1.25.em,
+                        maxLines = 1,
+                        overflow = TextOverflow.StartEllipsis,
+                    )
+                }
             }
-            Text(
-                text,
-                solutionSemantics(math),
-                color = dim,
-                fontFamily = if (math != null) mathFont else null,
-                autoSize = TextAutoSize.StepBased(16.sp, resultSize.value.sp, 0.25.sp),
-                textAlign = TextAlign.End,
-                lineHeight = 1.25.em,
-                maxLines = 1,
-                overflow = TextOverflow.StartEllipsis,
-            )
+        }
+    }
+}
+
+@Composable
+private fun RecentExpressions(state: CalculatorState) {
+    val target = state.committedEntryCount.toFloat()
+    val position = remember { Animatable(target) }
+    LaunchedEffect(target) {
+        position.animateTo(target, tween(durationMillis = 280, easing = FastOutSlowInEasing))
+    }
+    val extraRows by remember(target) {
+        derivedStateOf { ceil((target - position.value).coerceAtLeast(0f)).toInt() }
+    }
+    val density = LocalDensity.current
+    val rowHeight = with(density) { 32.sp.toDp() }
+    val rowPixels = with(density) { rowHeight.roundToPx() }.coerceAtLeast(1)
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Column(
+        Modifier
+            .layout { measurable, constraints ->
+                val visibleRows = (constraints.maxHeight / rowPixels).coerceAtMost(TAPE_LINES)
+                val viewport = measurable.measure(constraints.copy(maxHeight = rowPixels * visibleRows))
+                layout(viewport.width, viewport.height) { viewport.placeRelative(0, 0) }
+            }
+            .graphicsLayer {
+                clip = true
+                if (position.value != target) compositingStrategy = CompositingStrategy.Offscreen
+            }
+            .drawWithCache {
+                val height = size.height.coerceAtLeast(1f)
+                val edge = (8.dp.toPx() / height).coerceAtMost(0.5f)
+                val mask = Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    edge to Color.White,
+                    (1f - edge) to Color.White,
+                    1f to Color.Transparent,
+                    endY = height,
+                )
+                onDrawWithContent {
+                    drawContent()
+                    if (position.value != target) drawRect(mask, blendMode = BlendMode.DstIn)
+                }
+            }
+            .wrapContentHeight(Alignment.Bottom, unbounded = true)
+            .graphicsLayer { translationY = (target - position.value) * rowPixels },
+        horizontalAlignment = Alignment.End,
+    ) {
+        for (entry in state.recentEntries(TAPE_LINES + extraRows)) {
+            key(entry.time, entry.expression) {
+                val expression = display(entry.expression)
+                val answer = display(entry.answer.text)
+                val line = remember(expression, answer, entry.answer.solution, dim) {
+                    buildAnnotatedString {
+                        val separator = if (entry.answer.solution == null) " = " else " → "
+                        withStyle(SpanStyle(color = dim)) { append(expression + separator) }
+                        append(answer)
+                    }
+                }
+                Text(
+                    line,
+                    Modifier.height(rowHeight).then(solutionSemantics(entry.answer, "$expression. ")),
+                    fontFamily = mathFont,
+                    fontSize = 18.sp,
+                    lineHeight = 32.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.StartEllipsis,
+                )
+            }
         }
     }
 }

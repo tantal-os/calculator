@@ -40,6 +40,9 @@ internal class CalculatorState(application: Application) : AndroidViewModel(appl
     private var showError by mutableStateOf(false)
 
     val entries = mutableStateListOf<Entry>()
+    private val pendingEntries = mutableStateListOf<Entry>()
+    var committedEntryCount by mutableStateOf(0L)
+        private set
     var storageError by mutableStateOf<StorageError?>(null)
         private set
     var radians by mutableStateOf(settings.getBoolean("radians", false))
@@ -63,6 +66,11 @@ internal class CalculatorState(application: Application) : AndroidViewModel(appl
             null -> null
         }
 
+    fun recentEntries(limit: Int): List<Entry> {
+        val pending = pendingEntries.takeLast(limit)
+        return entries.takeLast(limit - pending.size) + pending
+    }
+
     init {
         viewModelScope.launch {
             try {
@@ -76,8 +84,12 @@ internal class CalculatorState(application: Application) : AndroidViewModel(appl
                 try {
                     when (operation) {
                         is Write.Add -> {
-                            withContext(Dispatchers.IO) { history.add(operation.entry) }
-                            entries += operation.entry
+                            try {
+                                withContext(Dispatchers.IO) { history.add(operation.entry) }
+                                entries += operation.entry
+                            } finally {
+                                pendingEntries.remove(operation.entry)
+                            }
                         }
                         Write.Clear -> {
                             withContext(Dispatchers.IO) { history.clear() }
@@ -218,7 +230,10 @@ internal class CalculatorState(application: Application) : AndroidViewModel(appl
             is Calculation.Answer -> {
                 val original = expression
                 if (answer.text != original) {
-                    write(Write.Add(Entry(System.currentTimeMillis(), original, answer)))
+                    val entry = Entry(System.currentTimeMillis(), original, answer)
+                    pendingEntries += entry
+                    committedEntryCount++
+                    write(Write.Add(entry))
                 }
                 if (answer.exact != null) {
                     input = "@0;"
@@ -250,6 +265,7 @@ internal class CalculatorState(application: Application) : AndroidViewModel(appl
 
     private fun write(operation: Write) {
         if (writes.trySend(operation).isFailure) {
+            if (operation is Write.Add) pendingEntries.remove(operation.entry)
             storageFailed(operation.error, IOException("Storage queue unavailable"))
         }
     }
