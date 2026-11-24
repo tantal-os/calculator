@@ -7,4 +7,20 @@
     <string name="delete">Delete</string>
     <string name="scientific_keys">Scientific keys</string>
     <string name="error">Error</string>
+    <string name="calculate">Calculate</string>
+    <string name="incomplete_expression">Incomplete expression</string>
+    <string name="unsupported_expression">Unsupported expression</string>
+    <string name="calculation_limit">Calculation limit exceeded</string>
+    <string name="calculation_unavailable">Calculator engine unavailable</string>
+    <string name="undefined_result">Undefined result</string>
+    <string name="history_error">Could not access history</string>
+    <string name="settings_error">Could not save settings</string>
+    <string name="solution_all">Every real number is a solution</string>
+    <string name="solution_empty">No real solutions</string>
+    <string name="solution_one">The only real solution is %1$s</string>
+    <string name="solution_two">The two real solutions are %1$s and %2$s</string>
+    <string name="solution_root">the square root of %1$s</string>
+    <string name="solution_scaled_root">%1$s times the square root of %2$s</string>
+    <string name="solution_plus_minus">The two real solutions are plus or minus %1$s</string>
+    <string name="solution_centered">The two real solutions are %1$s plus or minus %2$s</string>
 </resources>

@@ -7,7 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class EngineTest {
-    private fun calc(expression: String, radians: Boolean = false) = evaluate(expression, radians)?.let(::format)
+    private fun calc(expression: String, radians: Boolean = false) = (NativeEngine.calculate(expression, radians) as? Calculation.Answer)?.text
 
     @Test
     fun evaluates() {
@@ -41,6 +41,46 @@ class EngineTest {
         for (broken in listOf("", "2+", "1÷0", "tan(90)", "√−1", "2.5!", "(−1)!", "ln(0)", "2)", "%", "1..2")) {
             assertNull(broken, calc(broken))
         }
+    }
+
+    @Test
+    fun continuesWithExactValues() {
+        val factorial = NativeEngine.calculate("18999!", false) as Calculation.Answer
+        assertEquals("9.61561310024E73042", factorial.text)
+        val restored = Entry.decode(Entry(1, "18999!", factorial).encode())
+        assertEquals(factorial, restored?.answer)
+        val quotient = NativeEngine.calculate("@0;÷18998!", false, listOf(requireNotNull(restored?.answer?.exact)))
+        assertEquals("18999", (quotient as Calculation.Answer).text)
+
+        val third = NativeEngine.calculate("1÷3", false) as Calculation.Answer
+        val whole = NativeEngine.calculate("@0;×3", false, listOf(requireNotNull(third.exact)))
+        assertEquals("1", (whole as Calculation.Answer).text)
+        assertEquals("1E−20", calc("sin(10^−20)", radians = true))
+    }
+
+    @Test
+    fun solvesEquationsOverTheReals() {
+        assertEquals("x = 4", calc("2x+3=11"))
+        assertEquals("x = ±√2", calc("x^2=2"))
+        assertEquals("x = 1", calc("(x−1)^2=0"))
+        assertEquals("x ∈ ℝ", calc("2(x+1)=2x+2"))
+        assertEquals("∅", calc("x=x+1"))
+        assertEquals("∅", calc("x^2=−1"))
+        assertEquals("x = 1/3", calc("3x=1"))
+        assertEquals("x₁ = −3, x₂ = 2", calc("x^2+x−6=0"))
+        assertEquals("x = 1 ±2√2", calc("(x−1)^2=8"))
+        assertEquals(Calculation.Error(Failure.Unsupported), NativeEngine.calculate("x^3=2", false))
+        assertEquals(Calculation.Error(Failure.Limit), NativeEngine.calculate("100001!", false))
+        assertEquals(Calculation.Error(Failure.Incomplete), NativeEngine.calculate("1+", false))
+    }
+
+    @Test
+    fun preservesLegacyHistory() {
+        assertEquals(
+            Entry(123, "1÷3", Calculation.Answer("0.333333333333")),
+            Entry.decode("123\t1÷3\t0.333333333333"),
+        )
+        assertNull(Entry.decode("123\tbroken"))
     }
 
     @Test

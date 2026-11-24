@@ -1,7 +1,7 @@
 # Tantal Calculator
 
-The calculator for Tantal (`app.tantal.calculator`). Our own Compose code over
-platform APIs; not a fork of another app.
+The calculator for Tantal (`app.tantal.calculator`) uses a Compose interface
+and a Rust engine for exact arithmetic and equations.
 
 ## Building
 
@@ -10,8 +10,13 @@ platform APIs; not a fork of another app.
 ./gradlew testDebugUnitTest
 ```
 
-Needs JDK 21 and `local.properties` with `sdk.dir` pointing to an Android
-SDK that has the `android-37.2` platform.
+On Linux, install JDK 21, Rust 1.95, and the Android SDK with platform
+`android-37.2` and NDK `30.0.16248370`. Set `sdk.dir` in `local.properties`
+and install the Android Rust targets:
+
+```sh
+rustup target add aarch64-linux-android x86_64-linux-android
+```
 
 ## Contributing
 

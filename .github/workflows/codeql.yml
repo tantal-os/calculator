@@ -27,6 +27,10 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+      - name: Install Rust Android targets
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --target aarch64-linux-android,x86_64-linux-android
+          rustup override set 1.95.0
       - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: java-kotlin

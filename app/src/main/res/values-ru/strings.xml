@@ -7,4 +7,20 @@
     <string name="delete">Удалить</string>
     <string name="scientific_keys">Научные функции</string>
     <string name="error">Ошибка</string>
+    <string name="calculate">Вычислить</string>
+    <string name="incomplete_expression">Незаконченное выражение</string>
+    <string name="unsupported_expression">Выражение не поддерживается</string>
+    <string name="calculation_limit">Превышен предел вычисления</string>
+    <string name="calculation_unavailable">Вычислительный модуль недоступен</string>
+    <string name="undefined_result">Результат не определён</string>
+    <string name="history_error">Не удалось обратиться к истории</string>
+    <string name="settings_error">Не удалось сохранить настройки</string>
+    <string name="solution_all">Любое действительное число является решением</string>
+    <string name="solution_empty">Действительных решений нет</string>
+    <string name="solution_one">Единственное действительное решение: %1$s</string>
+    <string name="solution_two">Два действительных решения: %1$s и %2$s</string>
+    <string name="solution_root">квадратный корень из %1$s</string>
+    <string name="solution_scaled_root">%1$s умножить на квадратный корень из %2$s</string>
+    <string name="solution_plus_minus">Два действительных решения: плюс или минус %1$s</string>
+    <string name="solution_centered">Два действительных решения: %1$s плюс или минус %2$s</string>
 </resources>
